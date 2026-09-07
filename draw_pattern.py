@@ -7,6 +7,16 @@ class Maille(Enum):
     DOUBLE_FONTURE = 2
 
 
+class Point(Enum):
+    JERSEY = 0  # maille tout le temps simple fonture
+    SIMPLE_COTE = (
+        1  # alternance des mailles 1 sur la simple fonture / 1 sur la double fonture
+    )
+    DOUBLE_COTE = (
+        2  # alternance des mailles : 2 sur la simple fonture / 2 sur la double fonture
+    )
+
+
 class Rang:
     # l'index donne la position de la maille, le type donne la maille
     rang: list[Maille]
@@ -19,6 +29,7 @@ class PatronDroit:
             "nb_maille_10cm": nb_maille_10cm,
             "nb_rang_10cm": nb_rang_10cm,
         }
+        self.nb_aiguilles = 200
 
     def to_csv(self, nom_fichier: str):
         with open(nom_fichier, "w") as f:
@@ -42,8 +53,9 @@ class PatronDroit:
         largeur_bas_cm: float,
         hauteur_cm: float,
         largeur_haut_cm: float,
-        commencer_tout_de_suite: bool = True,
-        finir_tout_de_suite: bool = True,
+        commencer_tout_de_suite: bool = False,
+        finir_tout_de_suite: bool = False,
+        rabat_de_maille: int = 0,
     ):
 
         # TODO
@@ -60,6 +72,7 @@ class PatronDroit:
                 f"INFO: nombre de mailles en bas pas symétrique ({largeur_bas_maille})"
             )
             largeur_bas_maille += 1
+        largeur_bas_maille -= rabat_de_maille * 2
         if largeur_haut_maille % 2 == 1:
             print(
                 f"INFO: nombre de mailles en haut pas symétrique ({largeur_haut_maille})"
@@ -91,12 +104,12 @@ class PatronDroit:
         # ranger ça dans le patron
 
         max_maille = max(largeur_haut_maille, largeur_bas_maille)
-        milieu = int(max_maille / 2)
+        milieu = int(self.nb_aiguilles / 2)
         patron_courant: list[Rang] = list()
 
         # rang initial
         if not commencer_tout_de_suite:
-            rang_initial = [Maille.AUCUNE] * max_maille
+            rang_initial = [Maille.AUCUNE] * self.nb_aiguilles
             rang_initial[
                 milieu - int(largeur_bas_maille / 2) : milieu
                 + int(largeur_bas_maille / 2)
@@ -107,7 +120,7 @@ class PatronDroit:
         # rang avec les operations
         for r in range(nb_rangs):
             nb_mailles = largeur_bas_maille + sum(repartition[0 : r + 1]) * 2
-            rang_courant = [Maille.AUCUNE] * max_maille
+            rang_courant = [Maille.AUCUNE] * self.nb_aiguilles
             rang_courant[
                 milieu - int(nb_mailles / 2) : milieu + int(nb_mailles / 2)
             ] = [Maille.SIMPLE_FONTURE] * nb_mailles
@@ -116,7 +129,7 @@ class PatronDroit:
 
         # rang final
         if not finir_tout_de_suite:
-            rang_final = [Maille.AUCUNE] * max_maille
+            rang_final = [Maille.AUCUNE] * self.nb_aiguilles
             rang_final[
                 milieu - int(largeur_haut_maille / 2) : milieu
                 + int(largeur_haut_maille / 2)
