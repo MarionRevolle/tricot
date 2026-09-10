@@ -30,6 +30,10 @@ class PatronDroit:
             "nb_rang_10cm": nb_rang_10cm,
         }
         self.nb_aiguilles = 200
+        self.operations: list[
+            tuple[int, int]
+        ] = []  # (operation gauche, operation droite)
+        self.nb_maille_depart = 0
 
     def to_csv(self, nom_fichier: str):
         with open(nom_fichier, "w") as f:
@@ -53,16 +57,13 @@ class PatronDroit:
         largeur_bas_cm: float,
         hauteur_cm: float,
         largeur_haut_cm: float,
-        commencer_tout_de_suite: bool = False,
-        finir_tout_de_suite: bool = False,
         rabat_de_maille: int = 0,
     ):
 
         # TODO
         # - rajouter la gestion des points (cote ou jersey), pour le moment
         #   tout jersey
-        # - rajouter la gestion d'un rabat de maille obligatoire au début
-        #   (ex rabattre 5 mailles au début)
+        # - réparer commencer et finir tout de suite, pour le moment c'est cassé
 
         # traduction cm -> maille et rang
         largeur_bas_maille = self.largeur_cm_en_maille(largeur_bas_cm)
@@ -72,6 +73,7 @@ class PatronDroit:
                 f"INFO: nombre de mailles en bas pas symétrique ({largeur_bas_maille})"
             )
             largeur_bas_maille += 1
+
         largeur_bas_maille -= rabat_de_maille * 2
         if largeur_haut_maille % 2 == 1:
             print(
@@ -88,10 +90,7 @@ class PatronDroit:
         nb_operations = round((largeur_haut_maille - largeur_bas_maille) / 2)
 
         nb_rangs = round(hauteur_rang / 2)
-        if not commencer_tout_de_suite:
-            nb_rangs -= 1
-        if not finir_tout_de_suite:
-            nb_rangs -= 1
+
         quotient, reste = divmod(nb_operations, nb_rangs)
         if abs(quotient) >= 2:
             print(
@@ -103,19 +102,8 @@ class PatronDroit:
 
         # ranger ça dans le patron
 
-        max_maille = max(largeur_haut_maille, largeur_bas_maille)
         milieu = int(self.nb_aiguilles / 2)
-        patron_courant: list[Rang] = list()
-
-        # rang initial
-        if not commencer_tout_de_suite:
-            rang_initial = [Maille.AUCUNE] * self.nb_aiguilles
-            rang_initial[
-                milieu - int(largeur_bas_maille / 2) : milieu
-                + int(largeur_bas_maille / 2)
-            ] = [Maille.SIMPLE_FONTURE] * largeur_bas_maille
-            patron_courant.append(rang_initial)
-            patron_courant.append(rang_initial)
+        patron_courant: list[Rang] = []
 
         # rang avec les operations
         for r in range(nb_rangs):
@@ -127,14 +115,4 @@ class PatronDroit:
             patron_courant.append(rang_courant)
             patron_courant.append(rang_courant)
 
-        # rang final
-        if not finir_tout_de_suite:
-            rang_final = [Maille.AUCUNE] * self.nb_aiguilles
-            rang_final[
-                milieu - int(largeur_haut_maille / 2) : milieu
-                + int(largeur_haut_maille / 2)
-            ] = [Maille.SIMPLE_FONTURE] * largeur_haut_maille
-            patron_courant.append(rang_final)
-            patron_courant.append(rang_final)
-
-            self.patron.append(patron_courant)
+        self.patron.append(patron_courant)
