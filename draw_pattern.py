@@ -1,10 +1,21 @@
 from enum import Enum
 
+import plotly.graph_objects as go
+from scipy.interpolate import CubicSpline
+
 
 class Maille(Enum):
     AUCUNE = 0
     SIMPLE_FONTURE = 1
     DOUBLE_FONTURE = 2
+
+    def __str__(self):
+        if self == Maille.AUCUNE:
+            return ""
+        elif self == Maille.SIMPLE_FONTURE:
+            return "X"
+        elif self == Maille.DOUBLE_FONTURE:
+            return "O"
 
 
 class Point(Enum):
@@ -16,10 +27,81 @@ class Point(Enum):
         2  # alternance des mailles : 2 sur la simple fonture / 2 sur la double fonture
     )
 
+    def __str__(self):
+        return self.name.replace("_", " ").lower()
+
 
 class Rang:
     # l'index donne la position de la maille, le type donne la maille
     rang: list[Maille]
+
+
+def largeur_cm_en_maille(largeur_cm: float, nb_maille_10cm: int) -> int:
+    return round(largeur_cm * nb_maille_10cm / 10)
+
+
+def hauteur_cm_en_rang(hauteur_cm: float, nb_rang_10cm: int) -> int:
+    return round(hauteur_cm * nb_rang_10cm / 10)
+
+
+def largeur_maille_en_cm(largeur_maille: int, nb_maille_10cm: int) -> float:
+    return largeur_maille * 10.0 / nb_maille_10cm
+
+
+def hauteur_rang_en_cm(hauteur_rang: int, nb_rang_10cm: int) -> float:
+    return hauteur_rang * 10.0 / nb_rang_10cm
+
+
+class Courbe:
+    def __init__(
+        self, nb_maille_10cm: int, nb_rang_10cm: int, points: list[tuple[int, int]]
+    ):
+        self.points_cm: list[tuple[float, float]] = [
+            (
+                largeur_maille_en_cm(p[0], nb_maille_10cm),
+                hauteur_rang_en_cm(p[1], nb_rang_10cm),
+            )
+            for p in points
+        ]
+
+        if len(self.points_cm) < 2:
+            raise ValueError("Une spline nécessite au moins deux points")
+
+        abscisses = [point[0] for point in self.points_cm]
+        ordonnees = [point[1] for point in self.points_cm]
+        if len(set(abscisses)) != len(abscisses):
+            raise ValueError("Les largeurs des points doivent être différentes")
+
+        ordre = sorted(range(len(abscisses)), key=abscisses.__getitem__)
+        abscisses_triees = [abscisses[i] for i in ordre]
+        ordonnees_triees = [ordonnees[i] for i in ordre]
+        self.fonction = CubicSpline(abscisses_triees, ordonnees_triees)
+
+    def print(self):
+        abscisses = self.fonction.x
+        debut = abscisses[0]
+        fin = abscisses[-1]
+        echantillons = [debut + (fin - debut) * i / 199 for i in range(200)]
+        figure = go.Figure()
+        figure.add_scatter(
+            x=echantillons,
+            y=self.fonction(echantillons),
+            mode="lines",
+            name="Spline",
+        )
+        figure.add_scatter(
+            x=[point[0] for point in self.points_cm],
+            y=[point[1] for point in self.points_cm],
+            mode="markers",
+            name="Points",
+        )
+        figure.update_layout(
+            title="Fonction de la courbe",
+            xaxis_title="Hauteur (cm)",
+            yaxis_title="Largeur (cm)",
+        )
+        figure.write_html("courbe.html", auto_open=False)
+        print("Graphique enregistré dans courbe.html")
 
 
 class PatronDroit:
@@ -37,31 +119,34 @@ class PatronDroit:
 
     def faire_un_rang(
         self,
-        operation_droite: int,
         operation_gauche: int,
+        operation_droite: int,
         point: Point,
-        nb_mailles_depart: int,
+        nb_mailles_depart_gauche: int,
+        nb_mailles_depart_droit: int,
     ) -> Rang:
         rang = [Maille.AUCUNE] * self.nb_aiguilles
         milieu = int(self.nb_aiguilles / 2)
-        nb_mailles = nb_mailles_depart + operation_droite + operation_gauche
+        nb_mailles_gauche = nb_mailles_depart_gauche + operation_gauche
+        nb_mailles_droit = nb_mailles_depart_droit + operation_droite
+        nb_mailles = nb_mailles_droit + nb_mailles_gauche
 
         if point == Point.JERSEY:
-            rang[milieu - int(nb_mailles / 2) : milieu + int(nb_mailles / 2)] = [
+            rang[milieu - nb_mailles_gauche : milieu + nb_mailles_droit] = [
                 Maille.SIMPLE_FONTURE
             ] * nb_mailles
         elif point == Point.SIMPLE_COTE:
             for i in range(nb_mailles):
                 if i % 2 == 0:
-                    rang[milieu - int(nb_mailles / 2) + i] = Maille.SIMPLE_FONTURE
+                    rang[milieu - nb_mailles_gauche + i] = Maille.SIMPLE_FONTURE
                 else:
-                    rang[milieu - int(nb_mailles / 2) + i] = Maille.DOUBLE_FONTURE
+                    rang[milieu - nb_mailles_gauche + i] = Maille.DOUBLE_FONTURE
         elif point == Point.DOUBLE_COTE:
             for i in range(nb_mailles):
                 if (i // 2) % 2 == 0:
-                    rang[milieu - int(nb_mailles / 2) + i] = Maille.SIMPLE_FONTURE
+                    rang[milieu - nb_mailles_gauche + i] = Maille.SIMPLE_FONTURE
                 else:
-                    rang[milieu - int(nb_mailles / 2) + i] = Maille.DOUBLE_FONTURE
+                    rang[milieu - nb_mailles_gauche + i] = Maille.DOUBLE_FONTURE
         return rang
 
     def to_csv(self, nom_fichier: str):
@@ -70,65 +155,61 @@ class PatronDroit:
         patron: list[Rang] = []
 
         # rang avec les operations
-        nb_mailles_depart = self.nb_maille_depart
+        nb_mailles_depart_gauche = int(self.nb_maille_depart / 2)
+        nb_mailles_depart_droit = self.nb_maille_depart - nb_mailles_depart_gauche
         for partie, op in enumerate(self.operations):
             point = self.points[partie]
             for r, o in enumerate(op):
                 rang = self.faire_un_rang(
-                    o[0],
-                    o[1],
-                    point,
-                    nb_mailles_depart,
+                    o[0], o[1], point, nb_mailles_depart_gauche, nb_mailles_depart_droit
                 )
                 patron.append(rang)
                 patron.append(rang)
-                nb_mailles_depart += o[0] + o[1]
+                nb_mailles_depart_gauche += o[0]
+                nb_mailles_depart_droit += o[1]
 
         with open(nom_fichier, "w") as f:
             for rang in reversed(patron):
-                f.write(
-                    ",".join(
-                        [
-                            ""
-                            if maille == Maille.AUCUNE
-                            else "X"
-                            if maille == Maille.SIMPLE_FONTURE
-                            else "O"
-                            for maille in rang
-                        ]
-                    )
-                )
+                f.write(",".join([str(maille) for maille in rang]))
                 f.write("\n")
 
     def __str__(self) -> str:
-        print("aller on fait un truc intelligent pour afficher le patron")
 
-        def trouver_quoi_ecrire(index: int) -> str:
-            operation_courante = self.operations[index]
-            if operation_courante[0] == 0 and operation_courante[1] == 0:
-                print("trouver jusuq'à quand on fait du tout droit")
-                return "tout droit"
-            if abs(operation_courante[0]) > 1 and abs(operation_courante[1]) > 1:
-                if operation_courante[0] > 0:
-                    return f"Rajouter {operation_courante[0]} mailles à gauche et {operation_courante[1]} mailles à droite"
-                else:
-                    return f"Rabattre {operation_courante[0]} mailles à gauche et {operation_courante[1]} mailles à droite"
-            else:
-                if operation_courante[0] > 0:
-                    print("Augmenter à une maille du bord tous les deux rangs")
-                    print("TODO trouver le pattern")
-                    return f"Rajouter {operation_courante[0]} maille à gauche et {operation_courante[1]} maille à droite"
-                else:
-                    print("Diminuer à une maille du bord tous les deux rangs")
-                    return f"Rabattre {operation_courante[0]} maille à gauche et {operation_courante[1]} maille à droite"
+        def tuple_to_text(t):
+            gauche, droite = t
+            gauche = abs(gauche)
+            droite = abs(droite)
+            if gauche == droite:
+                return f"{gauche} mailles à gauche et à droite"
+            return f"{gauche} mailles à gauche et {droite} mailles à droite"
 
         str = f"Montez {self.nb_maille_depart} mailles\n"
+        for p, o in enumerate(self.operations):
+            # CAS 1 : il n'y a que des zéro partout
+            if sum([item[0] + item[1] for item in o]) == 0:
+                str += f"Tricoter {len(o) * 2} rangs de {self.points[p]}\n"
+            # CAS 2 : il n'y a que des zéros partout sauf au premier rang
+            elif sum([item[0] + item[1] for item in o[1:]]) == 0:
+                if o[0][0] + o[0][1] < 0:
+                    str += "Diminuer "
+                else:
+                    str += "Augmenter "
+                str += tuple_to_text(o[0]) + "\n"
+                str += (
+                    f"Continuer en {self.points[p]} pendant {(len(o) - 1) * 2} rangs\n"
+                )
+            # CAS 3 : Sinon trouver les répétitions et les afficher
+            else:
+                special_rank_1 = abs(o[0][0]) > 2 or abs(o[0][1]) > 0
+                if special_rank_1:
+                    if o[0][0] + o[0][1] < 0:
+                        str += "Rabattre "
+                    else:
+                        str += "Monter "
+                    str += tuple_to_text(o[0]) + "\n"
 
-    def largeur_cm_en_maille(self, largeur_cm: float) -> int:
-        return round(largeur_cm * self.echantillon_10cm["nb_maille_10cm"] / 10)
-
-    def hauteur_cm_en_rang(self, hauteur_cm: float) -> int:
-        return round(hauteur_cm * self.echantillon_10cm["nb_rang_10cm"] / 10)
+                str += "TODO\n"
+        return str
 
     def ajuster_nb_mailles_fonction_point(self, nb_mailles: int, point: Point) -> int:
         if point == Point.SIMPLE_COTE and nb_mailles % 2 != 1:
@@ -151,14 +232,13 @@ class PatronDroit:
         rabat_de_maille: int = 0,
         point: Point = Point.JERSEY,
     ):
-
-        # TODO
-        # - rajouter la gestion des points (cote ou jersey), pour le moment
-        #   tout jersey
-
         # traduction cm -> maille et rang
-        largeur_bas_maille = self.largeur_cm_en_maille(largeur_bas_cm)
-        largeur_haut_maille = self.largeur_cm_en_maille(largeur_haut_cm)
+        largeur_bas_maille = largeur_cm_en_maille(
+            largeur_bas_cm, self.echantillon_10cm["nb_maille_10cm"]
+        )
+        largeur_haut_maille = largeur_cm_en_maille(
+            largeur_haut_cm, self.echantillon_10cm["nb_maille_10cm"]
+        )
         largeur_bas_maille = self.ajuster_nb_mailles_fonction_point(
             largeur_bas_maille, point
         )
@@ -177,7 +257,7 @@ class PatronDroit:
 
             if largeur_theorique != largeur_bas_maille:
                 print(
-                    f"INFO: la largeur théorique n'est pas la même que les largeurs de trapèse, il faut rajouter une opération pour ajuster la largeur ({largeur_theorique} vs {largeur_bas_maille})    "
+                    f"INFO: la largeur théorique n'est pas la même que les largeurs de trapèze, il faut rajouter une opération pour ajuster la largeur ({largeur_theorique} vs {largeur_bas_maille})    "
                 )
                 ajustement_gauche = int((largeur_bas_maille - largeur_theorique) / 2)
                 ajustement_droit = (
@@ -191,7 +271,9 @@ class PatronDroit:
             )
             largeur_haut_maille += 1
 
-        hauteur_rang = self.hauteur_cm_en_rang(hauteur_cm)
+        hauteur_rang = hauteur_cm_en_rang(
+            hauteur_cm, self.echantillon_10cm["nb_rang_10cm"]
+        )
         if hauteur_rang % 2 == 1:
             print(f"INFO: nombre de rang impaire ({hauteur_rang})")
             hauteur_rang += 1
@@ -217,5 +299,40 @@ class PatronDroit:
 
         if self.nb_maille_depart == 0:
             self.nb_maille_depart = largeur_bas_maille
+        self.operations.append(operations)
+        self.points.append(point)
+
+    def ajouter_courbe(
+        self,
+        largeur_bas_cm: float,
+        hauteur_cm: float,
+        courbe: Courbe,
+        courbe_a_droite: bool = True,
+        point: Point = Point.JERSEY,
+    ):
+        print("TODO")
+        # TODO
+        # spécifier
+        operations = []
+        hauteur_courante = 0.0
+        operation_faites = 0.0
+
+        while hauteur_courante < hauteur_cm:
+            operation_cm = courbe.fonction(hauteur_courante)
+            operation_maille = int(
+                largeur_cm_en_maille(
+                    operation_cm, self.echantillon_10cm["nb_maille_10cm"]
+                )
+                - operation_faites
+            )
+            if courbe_a_droite:
+                operations.append((0, operation_maille))
+            else:
+                operations.append((operation_maille, 0))
+
+            hauteur_courante += hauteur_rang_en_cm(
+                2, self.echantillon_10cm["nb_rang_10cm"]
+            )
+            operation_faites += operation_maille
         self.operations.append(operations)
         self.points.append(point)
