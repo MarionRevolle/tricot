@@ -25,6 +25,7 @@ devant = draw_pattern.PatronDroit(35, 51)
 
 print("ETAPE 1: bord de côte")
 devant.ajouter_trapeze(28, 7, 28, point=draw_pattern.Point.DOUBLE_COTE)
+devant.ajouter_trapeze(28, 23, 28)
 
 encolure = draw_pattern.Courbe(
     28,
@@ -42,9 +43,18 @@ encolure = draw_pattern.Courbe(
 )
 encolure.print()
 
-devant.ajouter_courbe(28, 5, encolure)
+
+devant.ajouter_mixte_courbe_trapeze(
+    hauteur_total_cm=17,
+    largeur_bas_cm=28,
+    largeur_haut_cm=None,
+    largeur_haut_maille=3,
+    hauteur_courbe_cm=5,
+    courbe=encolure,
+    rabat_de_maille=-5,
+)
 
 print(devant.operations)
-print(devant)
+# print(devant)
 
 devant.to_csv("devant.csv")

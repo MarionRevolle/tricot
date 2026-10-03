@@ -302,17 +302,12 @@ class PatronDroit:
         self.operations.append(operations)
         self.points.append(point)
 
-    def ajouter_courbe(
+    def operation_courbe(
         self,
-        largeur_bas_cm: float,
         hauteur_cm: float,
         courbe: Courbe,
         courbe_a_droite: bool = True,
-        point: Point = Point.JERSEY,
     ):
-        print("TODO")
-        # TODO
-        # spécifier
         operations = []
         hauteur_courante = 0.0
         operation_faites = 0.0
@@ -334,5 +329,108 @@ class PatronDroit:
                 2, self.echantillon_10cm["nb_rang_10cm"]
             )
             operation_faites += operation_maille
+        return operations
+
+    def ajouter_courbe(
+        self,
+        hauteur_cm: float,
+        courbe: Courbe,
+        courbe_a_droite: bool = True,
+        point: Point = Point.JERSEY,
+    ):
+        operations = self.operation_courbe(hauteur_cm, courbe, courbe_a_droite)
         self.operations.append(operations)
         self.points.append(point)
+
+    def ajouter_mixte_courbe_trapeze(
+        self,
+        hauteur_total_cm: float,
+        largeur_bas_cm: float,
+        largeur_haut_cm: float | None,
+        hauteur_courbe_cm: float,
+        courbe: Courbe,
+        largeur_haut_maille: float | None = None,
+        rabat_de_maille: int = 0,
+        courbe_a_droite: bool = True,
+    ):
+
+        # étape 1 : on dessine la courbe
+        hauteur_sans_courbe_cm = hauteur_total_cm - hauteur_courbe_cm
+
+        operations_rectangle = [(0, 0)] * int(
+            hauteur_cm_en_rang(
+                hauteur_sans_courbe_cm, self.echantillon_10cm["nb_rang_10cm"]
+            )
+        )
+
+        operations_courbe = self.operation_courbe(
+            hauteur_courbe_cm, courbe, courbe_a_droite
+        )
+
+        operations = operations_rectangle + operations_courbe
+
+        nb_maille_courbe = sum(gauche + droite for gauche, droite in operations)
+
+        # étape 2 : on dessine le trapèze
+        if largeur_haut_cm is None and largeur_haut_maille is None:
+            raise ValueError(
+                "Il faut soit la largeur du haut en cm soit la largeur du haut en mailles"
+            )
+        if largeur_haut_cm is not None and largeur_haut_maille is not None:
+            raise ValueError(
+                "Il faut soit la largeur du haut en cm soit la largeur du haut en mailles, pas les deux"
+            )
+        if largeur_haut_cm is not None:
+            largeur_haut_maille = largeur_cm_en_maille(
+                largeur_haut_cm, self.echantillon_10cm["nb_maille_10cm"]
+            )
+
+        largeur_bas_maille = (
+            largeur_cm_en_maille(
+                largeur_bas_cm, self.echantillon_10cm["nb_maille_10cm"]
+            )
+            + rabat_de_maille
+            + nb_maille_courbe
+        )
+
+        # calculer et répartir les diminussions / augmentations
+        nb_operations = largeur_haut_maille - largeur_bas_maille
+
+        nb_rangs = len(operations) - 1
+
+        quotient, reste = divmod(nb_operations, nb_rangs)
+        if abs(quotient) >= 2:
+            print(
+                f"WARNING: attention il va y avoir de très grosses augmentations/diminussions ({quotient})"
+            )
+        if courbe_a_droite:
+            operations[0] = (rabat_de_maille, operations[0][1])
+        else:
+            operations[0] = (operations[0][0], rabat_de_maille)
+
+        for i in range(1, int(nb_rangs)):
+            if courbe_a_droite:
+                operations[i] = (
+                    int(quotient),
+                    operations[i][1],
+                )
+            else:
+                operations[i] = (
+                    operations[i][0],
+                    int(quotient),
+                )
+
+        for i in range(int(reste)):
+            if courbe_a_droite:
+                operations[i * nb_rangs // reste + 1] = (
+                    int(quotient) + 1,
+                    operations[i * nb_rangs // reste + 1][1],
+                )
+            else:
+                operations[i * nb_rangs // reste + 1] = (
+                    operations[i * nb_rangs // reste + 1][0],
+                    int(quotient) + 1,
+                )
+
+        self.operations.append(operations)
+        self.points.append(Point.JERSEY)
