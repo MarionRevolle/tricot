@@ -361,6 +361,7 @@ class PatronDroit:
             hauteur_cm_en_rang(
                 hauteur_sans_courbe_cm, self.echantillon_10cm["nb_rang_10cm"]
             )
+            / 2
         )
 
         operations_courbe = self.operation_courbe(
@@ -434,3 +435,30 @@ class PatronDroit:
 
         self.operations.append(operations)
         self.points.append(Point.JERSEY)
+
+    def ajouter_depuis_une_copie(
+        self,
+        patron_copie: "PatronDroit",
+        copie_indice_operation: int,
+        droite: bool = True,
+        courant_indice_operation: int | None = None,
+    ):
+
+        operation_a_copier = patron_copie.operations[copie_indice_operation]
+        if courant_indice_operation is None:
+            operations = [(0, 0)] * len(operation_a_copier)
+            self.operations.append(operations)
+            self.points.append(patron_copie.points[copie_indice_operation])
+            courant_indice_operation = len(self.operations) - 1
+
+        for i, op in enumerate(operation_a_copier):
+            if droite:
+                self.operations[courant_indice_operation][i] = (
+                    self.operations[courant_indice_operation][i][0],
+                    patron_copie.operations[copie_indice_operation][i][0],
+                )
+            else:
+                self.operations[courant_indice_operation][i] = (
+                    patron_copie.operations[copie_indice_operation][i][1],
+                    self.operations[courant_indice_operation][i][1],
+                )
