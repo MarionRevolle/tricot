@@ -149,17 +149,14 @@ class PatronDroit:
                     rang[milieu - nb_mailles_gauche + i] = Maille.DOUBLE_FONTURE
         return rang
 
-    def to_csv(self, nom_fichier: str):
-
-        # ranger ça dans le patron
+    def _get_rows(self) -> list[Rang]:
         patron: list[Rang] = []
 
-        # rang avec les operations
         nb_mailles_depart_gauche = int(self.nb_maille_depart / 2)
         nb_mailles_depart_droit = self.nb_maille_depart - nb_mailles_depart_gauche
         for partie, op in enumerate(self.operations):
             point = self.points[partie]
-            for r, o in enumerate(op):
+            for o in op:
                 rang = self.faire_un_rang(
                     o[0], o[1], point, nb_mailles_depart_gauche, nb_mailles_depart_droit
                 )
@@ -167,9 +164,12 @@ class PatronDroit:
                 patron.append(rang)
                 nb_mailles_depart_gauche += o[0]
                 nb_mailles_depart_droit += o[1]
+        return list(reversed(patron))
+
+    def to_csv(self, nom_fichier: str):
 
         with open(nom_fichier, "w") as f:
-            for rang in reversed(patron):
+            for rang in self._get_rows():
                 f.write(",".join([str(maille) for maille in rang]))
                 f.write("\n")
 
@@ -217,11 +217,11 @@ class PatronDroit:
                 f"INFO: avec la simple côte il faut un multiple de 2 +1  ({nb_mailles} + 1)"
             )
             nb_mailles += 1
-        elif point == Point.DOUBLE_COTE and nb_mailles % 4 != 0:
+        elif point == Point.DOUBLE_COTE and nb_mailles % 4 != 2:
             print(
-                f"INFO: avec la double côte il faut un multiple de 4 en maille + 2 ({nb_mailles} + {nb_mailles % 4 - 0})"
+                f"INFO: avec la double côte il faut un multiple de 4 en maille + 2 ({nb_mailles} + {nb_mailles % 4 - 2})"
             )
-            nb_mailles += nb_mailles % 4 - 0
+            nb_mailles += nb_mailles % 4 - 2
         return nb_mailles
 
     def ajouter_trapeze(
@@ -462,3 +462,85 @@ class PatronDroit:
                     patron_copie.operations[copie_indice_operation][i][1],
                     self.operations[courant_indice_operation][i][1],
                 )
+
+
+def to_ods(nom_fichier: str, patrons: dict[str, PatronDroit]) -> None:
+    from odf.opendocument import OpenDocumentSpreadsheet
+    from odf.style import (
+        Style,
+        TableCellProperties,
+        TableColumnProperties,
+        TableRowProperties,
+        TextProperties,
+    )
+    from odf.table import Table, TableCell, TableColumn, TableRow
+    from odf.text import P
+
+    if not patrons:
+        raise ValueError("Il faut au moins un patron pour créer le fichier ODS")
+
+    document = OpenDocumentSpreadsheet()
+    column_style = Style(name="CellColumn", family="table-column")
+    column_style.addElement(
+        TableColumnProperties(columnwidth="0.2cm", useoptimalcolumnwidth="false")
+    )
+    document.automaticstyles.addElement(column_style)
+
+    row_style = Style(name="CellRow", family="table-row")
+    row_style.addElement(
+        TableRowProperties(rowheight="0.2cm", useoptimalrowheight="false")
+    )
+    document.automaticstyles.addElement(row_style)
+
+    cell_style = Style(name="Cell", family="table-cell")
+    cell_style.addElement(TableCellProperties(padding="0cm", verticalalign="middle"))
+    cell_style.addElement(TextProperties(fontsize="5pt"))
+    document.automaticstyles.addElement(cell_style)
+
+    black_cell_style = Style(name="BlackCell", family="table-cell")
+    black_cell_style.addElement(
+        TableCellProperties(
+            backgroundcolor="#000000",
+            padding="0cm",
+            verticalalign="middle",
+        )
+    )
+    black_cell_style.addElement(TextProperties(fontsize="5pt"))
+    document.automaticstyles.addElement(black_cell_style)
+
+    for sheet_name, patron in patrons.items():
+        table = Table(name=sheet_name)
+        table.addElement(
+            TableColumn(
+                stylename=column_style,
+                numbercolumnsrepeated=patron.nb_aiguilles + 1,
+            )
+        )
+
+        header = TableRow(stylename=row_style)
+        header.addElement(TableCell(stylename=cell_style))
+        for column_index in range(patron.nb_aiguilles):
+            cell = TableCell(stylename=cell_style)
+            if (column_index + 1) % 10 == 0:
+                cell = TableCell(stylename=black_cell_style)
+            header.addElement(cell)
+        table.addElement(header)
+
+        for row_index, rang in enumerate(patron._get_rows()):
+            table_row = TableRow(stylename=row_style)
+            gutter_cell = TableCell(stylename=cell_style)
+            if (row_index + 1) % 10 == 0:
+                gutter_cell = TableCell(stylename=black_cell_style)
+            table_row.addElement(gutter_cell)
+
+            for maille in rang:
+                cell = TableCell(stylename=cell_style)
+                valeur = str(maille)
+                if valeur:
+                    cell.addElement(P(text=valeur))
+                table_row.addElement(cell)
+            table.addElement(table_row)
+
+        document.spreadsheet.addElement(table)
+
+    document.save(nom_fichier)

@@ -7,7 +7,7 @@ dos = draw_pattern.PatronDroit(35, 51)
 dos.ajouter_trapeze(50, 7, 50, point=draw_pattern.Point.DOUBLE_COTE)
 dos.ajouter_trapeze(50, 24, 50)
 dos.ajouter_trapeze(50, 24, 15, rabat_de_maille=-5)
-dos.to_csv("dos.csv")
+dos.to_csv("gilet_raglan/dos.csv")
 
 # %%
 devant = draw_pattern.PatronDroit(35, 51)
@@ -37,7 +37,7 @@ devant.ajouter_mixte_courbe_trapeze(
     courbe=encolure,
     rabat_de_maille=-5,
 )
-devant.to_csv("devant.csv")
+devant.to_csv("gilet_raglan/devant.csv")
 
 # %%
 manche = draw_pattern.PatronDroit(35, 51)
@@ -54,7 +54,14 @@ manche.ajouter_depuis_une_copie(
     droite=True,
     courant_indice_operation=2,
 )
-manche.to_csv("manche.csv")
+manche.to_csv("gilet_raglan/manche.csv")
+
+# %%
+
+draw_pattern.to_ods(
+    "gilet_raglan/gilet_raglan_m.ods",
+    {"dos": dos, "devant": devant, "manche": manche},
+)
 
 # %% pour plus tard essayer de faire un patron français
 # print("Réaliser le dos")
